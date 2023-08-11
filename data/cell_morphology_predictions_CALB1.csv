@@ -1,0 +1,65 @@
+cell specimen id,celltype,condition2,morpho,predicted morpho
+1079573757,Inh L1-3 SST CALB1,culture,Basket,DBC
+893647190,Inh L1-3 SST CALB1,culture_immune,DBC,DBC
+894610619,Inh L1-3 SST CALB1,culture_immune,DBC,DBC
+1037452707,Inh L1-3 SST CALB1,culture_immune,DBC,DBC
+855783147,Inh L1-3 SST CALB1,culture,DBC,DBC
+966905488,Inh L1-3 SST CALB1,culture,DBC,DBC
+689306781,Inh L1-3 SST CALB1,acute_immune,DBC,DBC
+681546151,Inh L1-3 SST CALB1,acute,DBC,DBC
+1079568285,Inh L1-3 SST CALB1,culture,Sparse SST,DBC
+819116654,Inh L1-3 SST CALB1,culture,Unknown,DBC
+819194697,Inh L1-3 SST CALB1,culture,Unknown,DBC
+847946572,Inh L1-3 SST CALB1,culture,Unknown,DBC
+848653390,Inh L1-3 SST CALB1,culture,Unknown,DBC
+848656903,Inh L1-3 SST CALB1,culture,Unknown,DBC
+851826399,Inh L1-3 SST CALB1,culture,Unknown,DBC
+855827363,Inh L1-3 SST CALB1,culture,Unknown,DBC
+873817757,Inh L1-3 SST CALB1,culture,Unknown,DBC
+910477870,Inh L1-3 SST CALB1,culture,Unknown,DBC
+939536264,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1001482602,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1002482616,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1002962250,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1002995498,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1003259854,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1003299699,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1005683610,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1025615047,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1037441788,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1059677200,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1060169142,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1069000230,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1086233130,Inh L1-3 SST CALB1,culture,Unknown,DBC
+1086237060,Inh L1-3 SST CALB1,culture,Unknown,DBC
+674650727,Inh L1-3 SST CALB1,acute_immune,Unknown,DBC
+681573981,Inh L1-3 SST CALB1,acute,Unknown,DBC
+717044970,Inh L1-3 SST CALB1,acute,Unknown,DBC
+893714311,Inh L1-3 SST CALB1,culture_immune,MC,MC
+894528079,Inh L1-3 SST CALB1,culture_immune,MC,MC
+1069242387,Inh L1-3 SST CALB1,culture_immune,MC,MC
+848629140,Inh L1-3 SST CALB1,culture_immune,Unknown,MC
+928381323,Inh L1-3 SST CALB1,culture_immune,Unknown,MC
+1001424628,Inh L1-3 SST CALB1,culture_immune,Unknown,MC
+734995812,Inh L1-3 SST CALB1,culture,Unknown,MC
+728418445,Inh L1-3 SST CALB1,acute_immune,Unknown,MC
+853693147,Inh L1-3 SST CALB1,acute_immune,Unknown,MC
+652080528,Inh L1-3 SST CALB1,acute,Unknown,MC
+759960718,Inh L1-3 SST CALB1,acute,Unknown,MC
+819891764,Inh L1-3 SST CALB1,culture_immune,Sparse SST,Sparse SST
+893655882,Inh L1-3 SST CALB1,culture_immune,Sparse SST,Sparse SST
+941862585,Inh L1-3 SST CALB1,culture_immune,Sparse SST,Sparse SST
+1061696800,Inh L1-3 SST CALB1,culture_immune,Sparse SST,Sparse SST
+847678482,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+855465998,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+855775470,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+872139724,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+886367811,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+894198050,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+894438630,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+894467531,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+941707648,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+1037485766,Inh L1-3 SST CALB1,culture_immune,Unknown,Sparse SST
+820061176,Inh L1-3 SST CALB1,culture,Unknown,Sparse SST
+1067582692,Inh L1-3 SST CALB1,culture,Unknown,Sparse SST
+718211624,Inh L1-3 SST CALB1,acute_immune,Unknown,Sparse SST

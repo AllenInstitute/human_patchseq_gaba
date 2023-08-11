@@ -1,0 +1,146 @@
+Type,Family name,Target name,HGNC symbol
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>1.1,CACNA1S
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>1.2,CACNA1C
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>1.3,CACNA1D
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>1.4,CACNA1F
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>2.1,CACNA1A
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>2.2,CACNA1B
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>2.3,CACNA1E
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>3.1,CACNA1G
+vgic,CatSper and Two-Pore channels (TPC),CatSper1,CATSPER1
+vgic,CatSper and Two-Pore channels (TPC),CatSper2,CATSPER2
+vgic,CatSper and Two-Pore channels (TPC),CatSper3,CATSPER3
+vgic,CatSper and Two-Pore channels (TPC),CatSper4,CATSPER4
+vgic,CatSper and Two-Pore channels (TPC),TPC1,TPCN1
+vgic,CatSper and Two-Pore channels (TPC),TPC2,TPCN2
+vgic,Cyclic nucleotide-regulated channels (CNG),CNGA1,CNGA1
+vgic,Cyclic nucleotide-regulated channels (CNG),CNGA2,CNGA2
+vgic,Cyclic nucleotide-regulated channels (CNG),CNGA3,CNGA3
+vgic,Cyclic nucleotide-regulated channels (CNG),CNGA4,CNGA4
+vgic,Cyclic nucleotide-regulated channels (CNG),CNGB1,CNGB1
+vgic,Cyclic nucleotide-regulated channels (CNG),CNGB3,CNGB3
+vgic,Cyclic nucleotide-regulated channels (CNG),HCN1,HCN1
+vgic,Cyclic nucleotide-regulated channels (CNG),HCN2,HCN2
+vgic,Cyclic nucleotide-regulated channels (CNG),HCN3,HCN3
+vgic,Cyclic nucleotide-regulated channels (CNG),HCN4,HCN4
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>3.2,CACNA1H
+vgic,Voltage-gated calcium channels  (Ca<sub>V</sub>),Ca<sub>v</sub>3.3,CACNA1I
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>1.1,KCNK1
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>10.1,KCNK10
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>12.1,KCNK12
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>13.1,KCNK13
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>15.1,KCNK15
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>16.1,KCNK16
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>17.1,KCNK17
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>18.1,KCNK18
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>2.1,KCNK2
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>3.1,KCNK3
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>4.1,KCNK4
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>5.1,KCNK5
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>6.1,KCNK6
+vgic,Ryanodine receptors (RyR),RyR1,RYR1
+vgic,Ryanodine receptors (RyR),RyR2,RYR2
+vgic,Ryanodine receptors (RyR),RyR3,RYR3
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>7.1,KCNK7
+vgic,Two-pore domain potassium channels  (K<sub>2P</sub>),K<sub>2P</sub>9.1,KCNK9
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Ca</sub>1.1,KCNMA1
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Ca</sub>2.1,KCNN1
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Ca</sub>2.2,KCNN2
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Ca</sub>2.3,KCNN3
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Ca</sub>3.1,KCNN4
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Ca</sub>5.1,KCNU1
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>1.1,KCNJ1
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>2.1,KCNJ2
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>2.2,KCNJ12
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>2.3,KCNJ4
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>2.4,KCNJ14
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>3.1,KCNJ3
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>3.2,KCNJ6
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>3.3,KCNJ9
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>3.4,KCNJ5
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>4.1,KCNJ10
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>4.2,KCNJ15
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>5.1,KCNJ16
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>6.1,KCNJ8
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>6.2,KCNJ11
+vgic,Inwardly rectifying potassium channels (K<sub>IR</sub>),K<sub>ir</sub>7.1,KCNJ13
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Na</sub>1.1,KCNT1
+vgic,"Calcium- and sodium-activated potassium channels (K<sub>Ca</sub>, K<sub>Na</sub>)",K<sub>Na</sub>1.2,KCNT2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.1,KCNA1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.2,KCNA2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.3,KCNA3
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.4,KCNA4
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.5,KCNA5
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.6,KCNA6
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.7,KCNA7
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>1.8,KCNA10
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>10.1,KCNH1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>10.2,KCNH5
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>11.1,KCNH2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>11.2,KCNH6
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>11.3,KCNH7
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>12.1,KCNH8
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>12.2,KCNH3
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>12.3,KCNH4
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>2.1,KCNB1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>2.2,KCNB2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>3.1,KCNC1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>3.2,KCNC2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>3.3,KCNC3
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>3.4,KCNC4
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>4.1,KCND1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>4.2,KCND2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>4.3,KCND3
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>5.1,KCNF1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>6.1,KCNG1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>6.2,KCNG2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>6.3,KCNG3
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>6.4,KCNG4
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>7.1,KCNQ1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>7.2,KCNQ2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>7.3,KCNQ3
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>7.4,KCNQ4
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>7.5,KCNQ5
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>8.1,KCNV1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>8.2,KCNV2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>9.1,KCNS1
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>9.2,KCNS2
+vgic,Voltage-gated potassium channels (K<sub>v</sub>),K<SUB>v</SUB>9.3,KCNS3
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.1,SCN1A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.2,SCN2A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.3,SCN3A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.4,SCN4A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.5,SCN5A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.6,SCN8A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.7,SCN9A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.8,SCN10A
+vgic,Voltage-gated sodium channels (Na<sub>V</sub>),Na<sub>v</sub>1.9,SCN11A
+vgic,Transient Receptor Potential channels (TRP),TRPA1,TRPA1
+vgic,Transient Receptor Potential channels (TRP),TRPC1,TRPC1
+vgic,Transient Receptor Potential channels (TRP),TRPC2,TRPC2
+vgic,Transient Receptor Potential channels (TRP),TRPC3,TRPC3
+vgic,Transient Receptor Potential channels (TRP),TRPC4,TRPC4
+vgic,Transient Receptor Potential channels (TRP),TRPC5,TRPC5
+vgic,Transient Receptor Potential channels (TRP),TRPC6,TRPC6
+vgic,Transient Receptor Potential channels (TRP),TRPC7,TRPC7
+vgic,Transient Receptor Potential channels (TRP),TRPM1,TRPM1
+vgic,Transient Receptor Potential channels (TRP),TRPM2,TRPM2
+vgic,Transient Receptor Potential channels (TRP),TRPM3,TRPM3
+vgic,Transient Receptor Potential channels (TRP),TRPM4,TRPM4
+vgic,Transient Receptor Potential channels (TRP),TRPM5,TRPM5
+vgic,Transient Receptor Potential channels (TRP),TRPM6,TRPM6
+vgic,Transient Receptor Potential channels (TRP),TRPM7,TRPM7
+vgic,Transient Receptor Potential channels (TRP),TRPM8,TRPM8
+vgic,Transient Receptor Potential channels (TRP),TRPML1,MCOLN1
+vgic,Transient Receptor Potential channels (TRP),TRPML2,MCOLN2
+vgic,Transient Receptor Potential channels (TRP),TRPML3,MCOLN3
+vgic,Voltage-gated proton channel  (H<sub>v</sub>1),H<sub>v</sub>1,HVCN1
+vgic,Transient Receptor Potential channels (TRP),TRPP1,PKD2
+vgic,Transient Receptor Potential channels (TRP),TRPP2,PKD2L1
+vgic,Transient Receptor Potential channels (TRP),TRPP3,PKD2L2
+vgic,Transient Receptor Potential channels (TRP),TRPV1,TRPV1
+vgic,Transient Receptor Potential channels (TRP),TRPV2,TRPV2
+vgic,Transient Receptor Potential channels (TRP),TRPV3,TRPV3
+vgic,Transient Receptor Potential channels (TRP),TRPV4,TRPV4
+vgic,Transient Receptor Potential channels (TRP),TRPV5,TRPV5
+vgic,Transient Receptor Potential channels (TRP),TRPV6,TRPV6

@@ -1,0 +1,1161 @@
+---
+title: "Acute vs. culture patchseq comparison"
+author: "Jeremy Miller"
+date: "April 29, 2023"
+output: html_notebook
+---
+
+This notebook performs some comparisons for the acute vs. culture study on GABAergic interneurons.  
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+  
+If needed set the working directory:  (e.g., `setwd("PATH_TO_DIRECTORY/patchseq_human_L23")`).  
+  
+## Prepare the data  
+  
+First load the required libraries and options and set directory locations.  Note: that you will need to have Seurat version 4.0.6 installed for this to produce the correct results.  Uncomment the line below to install that version.
+  
+```{r load_libraries}
+# You need an older version of Seurat
+#remotes::install_version("Seurat", version = "4.0.6")
+
+## Load libraries
+suppressPackageStartupMessages({
+  library(Matrix)
+  library(matrixStats)
+  library(Seurat)
+  library(scrattch.vis)
+  library(scrattch.io)
+  library(feather)
+  library(VENcelltypes) # for sex and mito genes
+  library(scrattch.hicat) # for get_cl_XXX
+  library(mfishtools) # subsampleCells
+  library(dplyr)
+  library(randomForest)
+  library(WGCNA)
+})
+options(stringsAsFactors=FALSE)
+options(future.globals.maxSize=8*1024^3)
+```
+  
+  
+Next, load the all the relevant data, which was calculated in a previous manuscript script.  
+  
+```{r load FACS data}
+load("complete_facs_data_sets.RData")
+```  
+  
+  
+Load patch-seq meta-data and data.  
+  
+```{r load patchseq data}
+load("complete_patchseq_data_sets.RData") # Includes datPatch, annoPatch, metaPatch
+
+## Revert names to original Hodge et al names
+a <- metaPatch$topLeaf_label
+metaPatch$topLeaf_label <- as.character(lapply(strsplit(a," \\("),function(x) return(x[[1]][1])))
+annoPatch$topLeaf_label <- metaPatch$topLeaf_label  # To avoid using the wrong cell type assignment below
+
+## Update the morpho call on one cell
+metaPatch$morpho_call[metaPatch$spec_id==893655882] = "SMC"
+metaPatch$morpho_call[metaPatch$morpho_call=="SMC"] = "Sparse SST"
+```
+  
+  
+Let's do some pre-processing to exclude genes that are enriched in glial clusters or that are exceptionally higher in dissociated nuclei (still called "FACS" for convenience) relative to Patch-seq data.  We also want to exclude sex and mitochondrial from consideration as markers.  
+  
+```{r select_genes_to_exclude}
+## Cells to keep
+kpClusts <- names(table(metaPatch$topLeaf_label)[table(metaPatch$topLeaf_label)>=10]) #c("Inh L2-4 PVALB WFDC2","Inh L2-4 SST FRZB")
+kpMTG    <- is.element(annoMTG_all$cluster_label,kpClusts)&subsampleCells(annoMTG_all$cluster_label,100)
+datMTG   <- datMTG_all[,kpMTG]
+
+# First exclude mitochondrial and sex genes
+isExclude <- sort(unique(c(sex_genes,mito_genes)))  
+excludeGn <- is.element(rownames(datPatch),isExclude)
+
+# Second find glial genes and exclude these from consideration.  
+clMTG   = factor(annoMTG_all$cluster_label)
+names(clMTG) <- colnames(datMTG_all)
+medians = get_cl_medians(datMTG_all,clMTG)
+isUsed  = unique(as.character(clMTG))
+isGlia  = isUsed[!(grepl("Exc",isUsed)|grepl("Inh",isUsed))]
+isUsed  = kpClusts # setdiff(isUsed,isGlia)
+
+maxUsed = apply(medians[,isUsed],1,max)
+maxGlia = apply(medians[,isGlia],1,max)
+glialGn = maxGlia>maxUsed     # Exclude genes with maximal median expression in glia
+
+# Third, exclude genes with average expression at least four-fold higher in either FACS or patch-seq
+platformGn = abs(rowMeans(datMTG)-rowMeans(datPatch))>=2
+
+# Finally, only keep genes that are expressed in both FACS and Patch-seq (log2(CPM+0)>0 in 1% of the cells)
+expressedGn = (rowSums(datMTG>=1)>(0.01*dim(datMTG)[2]))&(rowSums(datPatch>=1)>(0.01*dim(datPatch)[2]))
+
+keepGenes <- (!(excludeGn|glialGn|platformGn))&(expressedGn)
+mean(keepGenes)
+```
+  
+Note that we will only use this as a filter for some analyses.  
+  
+  
+## Immune signatures in patch-seq data
+  
+Let's start off unbiased clustering of cultured cells.    
+  
+```{r cluster cultured cells, fig.height=8,fig.width=11}
+metaPatch$condition[is.na(metaPatch$condition)] = "acute"
+patch.metadata <- data.frame( celltype = metaPatch$topLeaf_label, condition = metaPatch$condition,
+                              subclass = metaPatch$subclass_label,
+                              source = c("AIBS","other")[grepl("x",metaPatch$cell_specimen_project)+1])
+rownames(patch.metadata) <- colnames(datPatch)
+patch   <- CreateSeuratObject(counts = datPatch, meta.data = patch.metadata)
+culture <- patch[,metaPatch$condition!="acute"]
+culture <- FindVariableFeatures(culture,verbose=FALSE)
+
+pcs_patch <- 20
+res_patch <- 0.001
+culture <- ScaleData(culture, verbose = FALSE)
+culture <- RunPCA(culture, npcs = pcs_patch, verbose = FALSE)
+culture <- RunUMAP(culture, reduction = "pca", dims = 1:pcs_patch, verbose = FALSE)
+culture <- FindNeighbors(culture, dims = 1:2, verbose = FALSE,reduction="umap")
+culture <- FindClusters(culture, resolution = res_patch, verbose=FALSE)
+
+p1 <- DimPlot(culture, reduction = "umap", group.by = "celltype")
+p2 <- DimPlot(culture, reduction = "umap")
+p3 <- DimPlot(culture, reduction = "umap", group.by = "subclass")
+p4 <- DimPlot(culture, reduction = "umap", group.by = "source")
+print((p1+NoLegend())+p2+p3+p4)
+```
+  
+There is a source of variation more prevalent than subclass/cell type.  What is it?  Let's perform differential expression between cluster 0 and 1 to find out.  
+  
+  
+```{r find DEX genes}
+(culture_DEX <- FindMarkers(culture, min.pct = 0.5, logfc.threshold = 4, ident.1="0", ident.2="1", verbose=FALSE))
+```
+  
+These top genes are all immune related, and likely represent microglial contaminated as reported in (Shreejoy paper).  Let's use this gene set as a filter for dividing culture and acute cells into immune and non-immune groups.  
+  
+```{r identify immune signature cells in culture and acute, fig.height=11,fig.width=4}
+res_patch <- 0.1
+VariableFeatures(culture) <- rownames(culture_DEX)
+culture <- ScaleData(culture, verbose = FALSE)
+culture <- RunPCA(culture, npcs = pcs_patch, verbose = FALSE)
+culture <- RunUMAP(culture, reduction = "pca", dims = 1:pcs_patch, verbose = FALSE)
+culture <- FindNeighbors(culture, dims = 1:2, verbose = FALSE,reduction="umap")
+culture <- FindClusters(culture, resolution = res_patch, verbose=FALSE)
+
+acute <- patch[,metaPatch$condition=="acute"]
+VariableFeatures(acute) <- rownames(culture_DEX) 
+acute <- ScaleData(acute, verbose = FALSE)
+acute <- RunPCA(acute, npcs = pcs_patch, verbose = FALSE)
+acute <- RunUMAP(acute, reduction = "pca", dims = 1:pcs_patch, verbose = FALSE)
+acute <- FindNeighbors(acute, dims = 1:2, verbose = FALSE,reduction="umap")
+acute <- FindClusters(acute, resolution = res_patch, verbose=FALSE)
+
+p1 <- FeaturePlot(culture,"CD53")
+p2 <- DimPlot(culture, reduction = "umap")
+p3 <- FeaturePlot(acute,"CD53")
+p4 <- DimPlot(acute, reduction = "umap")
+print(p1+p2+p3+p4)
+```
+  
+  
+There is a clear separation by immune signature in the cultured cells, but this look more gradient in acute cells, although the same signature appears to work for both, and in both cases cluster=1 corresponds to the immune signature.  Add this metadata to the patch-seq Seurat object and metadata.  
+  
+```{r add immune to metadata}
+metaPatch$isImmune <- c(Idents(culture),Idents(acute))[colnames(datPatch)]==1
+metaPatch$condition2 <- metaPatch$condition
+metaPatch$condition2[metaPatch$isImmune] <- paste0(metaPatch$condition2[metaPatch$isImmune],"_immune")
+patch <- AddMetaData(patch,metaPatch$condition2,"condition2")
+```
+
+  
+Let's see how this splits out by cell type and subclass.  
+  
+```{r update call and proportion by cell type for acute}
+ct <- names(table(patch$celltype))[table(patch$celltype)>=10]
+tab <- table(patch$celltype,patch$condition2)[ct,]
+ord <- order(rowSums(tab[,c(1,3)])/rowSums(tab[,c(2,4)]))
+tab[ord,]
+table(patch$subclass,patch$condition2)
+```
+  
+There is not an obvious cell type relationship in acute vs. culture: immune signature and non-immune signature cells are found in most types with the possible exception of a few SST and VIP types that tend to have very few cells with immune signatures.    
+  
+  
+## Gene signatures of culture (and immune response)
+  
+Our main interest is to understand how gene expression may change in culture.  Given the large gene expression signature of this immune response, we have to account for it if we want to understand genes differentially expressed in culture.  Here we explicitly ask: What are the top DEX genes between these groups?  Since Pvalb interneurons are relatively homogeneous (as compared to other subclasses) and are well-represented in all four conditions, we will focus initially only on Pvalb types.
+  
+```{r markers for each acute and culture group}
+test.patch     <- patch[,patch$subclass=="PVALB"]
+Idents(test.patch) <- test.patch$condition2
+acute_immune   <- FindMarkers(test.patch, min.pct = 0.25, logfc.threshold = 2, 
+                              ident.1="acute_immune", ident.2="acute", verbose=FALSE)
+culture_immune <- FindMarkers(test.patch, min.pct = 0.25, logfc.threshold = 2, 
+                              ident.1="culture_immune", ident.2="culture", verbose=FALSE)
+acute_culture  <- FindMarkers(test.patch, min.pct = 0.25, logfc.threshold = 2, 
+                              ident.1="acute", ident.2="culture", verbose=FALSE)
+acutei_culturei<- FindMarkers(test.patch, min.pct = 0.25, logfc.threshold = 2, 
+                              ident.1="acute_immune", ident.2="culture_immune", verbose=FALSE)
+# Rename columns
+colnames(acute_immune)    <- c("pval_ai_over_a","avg_logFC_ai_over_a","pct_acute_immune","pct_acute","pval_adj_ai_over_a")
+colnames(culture_immune)  <- c("pval_ci_over_c","avg_logFC_ci_over_c","pct_culture_immune","pct_culture","pval_adj_ci_over_c")
+colnames(acute_culture)   <- c("pval_a_over_c","avg_logFC_a_over_c","pct_acute","pct_culture","pval_adj_a_over_c")
+colnames(acutei_culturei) <- c("pval_ai_over_ci","avg_logFC_ai_over_ci","pct_acute_immune","pct_culture_immune","pval_adj_ai_over_ci")
+
+data.frame(head(acutei_culturei,50))
+
+acute_immune$gene    <- rownames(acute_immune)
+culture_immune$gene  <- rownames(culture_immune)
+acute_culture$gene   <- rownames(acute_culture)
+acutei_culturei$gene <- rownames(acutei_culturei)
+```  
+  
+Which genes are differentially expressed between acute and culture in both the immune and non-immune groups?
+  
+```{r acute vs culture dex genes}
+dex_genes <- acute_immune %>% 
+  full_join(culture_immune, by="gene")  %>% 
+  full_join(acute_culture, by="gene")  %>% 
+  full_join(acutei_culturei, by="gene")
+write.csv(dex_genes,"immune_and_culture_gene_sets.csv")
+
+is_immune <- sort(intersect(rownames(culture_immune)[culture_immune$avg_logFC_ci_over_c>0],
+                            rownames(acute_immune)[acute_immune$avg_logFC_ai_over_a>0]))
+is_acute  <- sort(intersect(rownames(acute_culture)[acute_culture$avg_logFC_a_over_c>0],
+                            rownames(acutei_culturei)[acutei_culturei$avg_logFC_ai_over_ci>0]))
+is_culture<- sort(intersect(rownames(acute_culture)[acute_culture$avg_logFC_a_over_c<0],
+                            rownames(acutei_culturei)[acutei_culturei$avg_logFC_ai_over_ci<0]))
+write(is_acute,"is_acute_pvalb.txt")
+write(is_culture,"is_culture_pvalb.txt")
+write(is_immune,"is_immune_pvalb.txt")
+```
+
+  
+### Plot the top genes
+  
+In this section we are going to plot the top DEX genes from the patch-seq data from the lists above.  It may make more sense to treat this as a replication set for 10X data, but let's see how things look.  First let's look at the top immune genes  
+  
+```{r plot immune genes, fig.height=7,fig.width=12}
+anno <- test.patch@meta.data
+anno <- scrattch.io::annotate_factor(anno,"condition") # for later
+anno <- scrattch.io::annotate_factor(anno,"condition2")
+anno$condition2_color[anno$condition2_color=="#0066"] = "#006600"
+anno$condition2_color[anno$condition2_color=="#8000"] = "#800000" # Error correction... I fixed this before but need to find how
+data <- as.matrix(test.patch@assays$RNA@counts)
+data_df <- cbind(sample_name = colnames(data),as.data.frame(t(data)))
+anno$sample_name <- data_df$sample_name
+
+gnTmp <- unique(c(rownames(culture_immune)[1:20],rownames(acute_immune)[1:20]))
+scrattch.vis::sample_heatmap_plot(data_df, anno, genes = gnTmp, grouping = "condition2", log_scale = TRUE, font_size = 10, label_height = 15)
+```
+  
+Next, let's look at the top acute- and culture-specific genes.  
+  
+```{r plot acute genes, fig.height=7,fig.width=12}
+gnTmp <- unique(c(intersect(rownames(acute_culture[order(-acute_culture[,2]),]),is_acute)[1:10],
+                   intersect(rownames(acutei_culturei[order(-acutei_culturei[,2]),]),is_acute)[1:10],
+                   intersect(rownames(acute_culture[order(acute_culture[,2]),]),is_culture)[1:10],
+                   intersect(rownames(acutei_culturei[order(acutei_culturei[,2]),]),is_culture)[1:10]))
+scrattch.vis::sample_heatmap_plot(data_df, anno, genes = gnTmp, grouping = "condition2", log_scale = TRUE, font_size = 10, label_height = 15)
+```
+  
+Many of these top genes also appear to have a pretty strong immune effect.  What if we discard genes with immune effects?  
+  
+```{r plot acute genes without immune, fig.height=7,fig.width=12}
+gnTmp <- setdiff(c(intersect(rownames(acute_culture[order(-acute_culture[,2]),]),is_acute)[1:25],
+                   intersect(rownames(acutei_culturei[order(-acutei_culturei[,2]),]),is_acute)[1:25],
+                   intersect(rownames(acute_culture[order(acute_culture[,2]),]),is_culture)[1:25],
+                   intersect(rownames(acutei_culturei[order(acutei_culturei[,2]),]),is_culture)[1:25]),
+                 c(rownames(culture_immune),rownames(acute_immune)))
+scrattch.vis::sample_heatmap_plot(data_df, anno, genes = gnTmp, grouping = "condition2", log_scale = TRUE, font_size = 10, label_height = 15)
+```
+  
+I'm not sure what these genes are, but they look somewhat reasonable.  We may want to compare with 10x data at some point.  
+  
+Let's plot some immediate early genes and HLA immune genes for a sanity check. 
+  
+```{r plot top genes, fig.height=4,fig.width=12}
+iegs <- c("FOS", "FOSB", "JUN", "NR4A1", "NR4A2", "MCL1", "EGR1", "ARC")
+hlas <- c("HLA-DRB1","HLA-DPA1","HLA-DRA","HLA-DRB5", "HLA-C","HLA-B","HLA-H","HLA-A")
+gnTmp <- c(iegs,hlas)
+scrattch.vis::sample_heatmap_plot(data_df, anno, genes = gnTmp, grouping = "condition2", log_scale = TRUE, font_size = 10, label_height = 20)
+```
+  
+Many of these genes show an immune signature, as expected.  
+  
+Finally, let's output a UMAP showing these results.  
+  
+```{r split patch-seq by immune genes 2, fig.height=4,fig.width=14}
+subclass <- rep("LAMP5/PAX6",length(metaPatch$topLeaf_label))
+for (nm in c("VIP","SST","PVALB"))
+  subclass[grepl(nm,metaPatch$topLeaf_label)] = nm
+patch.metadata2 <- data.frame( celltype = metaPatch$topLeaf_label,
+                               subclass = subclass, condition = metaPatch$condition, 
+                               condition2=metaPatch$condition2)
+rownames(patch.metadata2) <- colnames(datPatch)
+patch <- CreateSeuratObject(counts = datPatch, meta.data = patch.metadata2)
+VariableFeatures(patch) <- c(is_acute[1:50],is_culture[1:50],is_immune[1:50]) # This variable holds the immune genes identified above
+
+pcs_patch <- 20
+patch <- ScaleData(patch, verbose = FALSE)
+patch <- RunPCA(patch, npcs = pcs_patch, verbose = FALSE)
+patch <- RunUMAP(patch, reduction = "pca", dims = 1:pcs_patch, verbose = FALSE)
+
+p1 <- DimPlot(patch, reduction = "umap", group.by = "celltype")
+p2 <- DimPlot(patch, reduction = "umap", group.by = "subclass")
+p3 <- DimPlot(patch, reduction = "umap", group.by = "condition2")
+print((p1+NoLegend())+p2+p3)
+
+pdf("pre_integration_UMAP.pdf", height = 4, width = 14)
+print((p1+NoLegend())+p2+p3)
+dev.off()
+```
+  
+## Identify acute vs. culture genes
+  
+Let's explicitly perform a linear model to identify genes associated with culture after accounting for subclass (after changing SST FRZB to PVALB) and immune signature.  
+  
+```{r linear model gene expression}
+tmpPatch <- metaPatch[,c("condition","isImmune","subclass_label")]
+tmpPatch$subclass_label[metaPatch$topLeaf_label=="Inh L2-4 SST FRZB"] = "PVALB"
+
+lm_pval_apply <- function(x){
+  dat   <- data.frame(tmpPatch,expression = x)
+  lmOut <- lm(expression~condition+isImmune+subclass_label+condition*isImmune, data = dat)
+  summary(lmOut)$coefficients[2:dim(summary(lmOut)$coefficients)[1],4]
+}
+
+cn <- c("condition","isImmune","subclass_label")
+lm_pval <- apply(datPatch[keepGenes,],1,lm_pval_apply)
+lm_pval_adjust <- apply(lm_pval,2,p.adjust)  # FDR corrected
+(topACgenes <- data.frame(t(lm_pval_adjust)[order(lm_pval_adjust[1,]),]))
+```
+  
+Add fold change in acute vs. culture as well as whether or not it's an channel gene.  We used a curated set of voltage gated ion channels for this analysis. 
+  
+```{r fold change and ion channels}
+channels <- read.csv("vgic_genes.csv")$HGNC.symbol
+exprAC <- findFromGroups(t(datPatch[rownames(topACgenes),]),metaPatch$condition)
+topACgenes$isChannel <- is.element(rownames(topACgenes),channels)
+topACgenes <- cbind(topACgenes,exprAC)
+topACgenes$FC <- topACgenes[,"culture"] - topACgenes[,"acute"]
+write.csv(topACgenes,"top_acute_culture_genes.csv")
+filteredACgenes <- topACgenes[(topACgenes$isChannel),]
+(filteredACgenes <- filteredACgenes[order(-log(filteredACgenes$conditionculture)*sign(filteredACgenes$FC)),])
+```
+
+Now plot some of the top genes
+
+```{r plot acute and culture genes, fig.height=7,fig.width=12}
+gnTmp <- rownames(filteredACgenes)[c(1:15,101:115)]
+scrattch.vis::sample_heatmap_plot(data_df, anno, genes = gnTmp, grouping = "condition2", log_scale = TRUE, font_size = 10, label_height = 15)
+```
+  
+  
+This doesn't look great.  Let's restrict the analysis to only "Inh L2-4 PVALB WFDC2" as the most common type.  
+  
+```{r linear model gene expression WFDC2}
+kpPatch  <- metaPatch$cluster_label=="Inh L2-4 PVALB WFDC2"
+tmpPatch <- metaPatch[,c("condition","isImmune")]
+
+lm_pval_apply <- function(x){
+  dat   <- data.frame(tmpPatch[kpPatch,],expression = x)
+  lmOut <- lm(expression~condition+isImmune+condition*isImmune, data = dat)
+  summary(lmOut)$coefficients[2:dim(summary(lmOut)$coefficients)[1],4]
+}
+
+keepGenes3 <- (rowMeans(datPatch[,kpPatch])>0.01)&keepGenes
+lm_pval <- apply(datPatch[keepGenes3,kpPatch],1,lm_pval_apply)
+lm_pval_adjust <- apply(lm_pval,2,p.adjust)  # FDR corrected
+(topACgenes <- data.frame(t(lm_pval_adjust)[order(lm_pval_adjust[1,]),]))
+```
+  
+Add fold change in acute vs. culture as well as whether or not it's an channel gene.  We used a curated set of voltage gated ion channels for this analysis. 
+  
+```{r fold change and ion channels WFDC2}
+channels <- read.csv("vgic_genes.csv")$HGNC.symbol
+exprAC <- findFromGroups(t(datPatch[rownames(topACgenes),kpPatch]),metaPatch$condition[kpPatch])
+topACgenes$isChannel <- is.element(rownames(topACgenes),channels)
+topACgenes <- cbind(topACgenes,exprAC)
+topACgenes$FC <- topACgenes[,"culture"] - topACgenes[,"acute"]
+write.csv(topACgenes,"top_acute_culture_genes_WFDC2.csv")
+filteredACgenes <- topACgenes[(topACgenes$isChannel),]
+filteredACgenes <- filteredACgenes[order(-log(filteredACgenes$conditionculture)*sign(filteredACgenes$FC)),]
+filteredACgenes[filteredACgenes$conditionculture<=0.01,]
+```
+
+Now plot some of the top genes
+
+```{r plot acute and culture genes WFDC2, fig.height=20,fig.width=12}
+gnTmp <- rownames(filteredACgenes)
+scrattch.vis::sample_heatmap_plot(data_df, anno, genes = gnTmp, grouping = "condition", log_scale = TRUE, font_size = 10, label_height = 5)
+pdf("vgic_byFDR.pdf",width=8,height=20)
+scrattch.vis::sample_heatmap_plot(data_df, anno, genes = gnTmp, grouping = "condition", log_scale = TRUE, font_size = 10, label_height = 5)
+dev.off()
+```
+  
+  
+  
+  
+## Integrate patch-seq and cells using Seurat  
+  
+In this section we are going to integrate Patch-seq and dissociated cells using Seurat, where we also split patch-seq by acute/culture and immune/non-immune signature.  This means that we'll have a total of 5 groups for the integration and we will use dissociated cells as the reference.  First, let's set up the Seurat object
+  
+```{r set-up data integration, warning=FALSE}
+## Subsample MTG GABAergic data
+useCl  <- grepl("Inh ",annoMTG_all$cluster_label) # All GABA types (only "Inh L1 SST CHRNA4" has no mapped patch-seq data)
+subs   <- rep("other",dim(datMTG_all)[2])
+subs[useCl] <- metaPatch$subclass_label[match(annoMTG_all$cluster_label[useCl],metaPatch$topLeaf_label)]
+keepNuclei  <- (subsampleCells(annoMTG_all$cluster_label,10)|subsampleCells(subs,250))&useCl #10 250
+lenD   <- sum(keepNuclei)
+
+## Use marker genes from dendrogram as set of genes for integration and UMAP/
+markers <- paste(annoPatch$marker_genes,collapse = " ")  # May want to have this as in input file
+markers <- strsplit(markers, " ")[[1]]
+markers <- intersect(rownames(patch),markers)
+
+## Create data and metadata files
+all.data     <- cbind(datMTG_all[,keepNuclei],datPatch[,])
+all.metadata <- data.frame( celltype  = c(annoMTG_all$cluster_label[keepNuclei],metaPatch$topLeaf_label), 
+                            condition = c(rep("dissociated",lenD),metaPatch$condition),
+                            condition2= c(rep("dissociated",lenD),metaPatch$condition2),
+                            subclass  = c(subs[keepNuclei],metaPatch$subclass_label),
+                            source    = c(rep("AIBS",lenD),c("AIBS","other")[grepl("x",metaPatch$cell_specimen_project)+1]),
+                            platform  = c(rep("dissociated",lenD),rep("patch-seq",dim(metaPatch)[1])))
+rownames(all.metadata) <- colnames(all.data)
+
+## Create Seurat object
+all.seurat <- CreateSeuratObject(counts = all.data, meta.data = all.metadata)
+```
+  
+  
+Next, perform the data integration.   
+  
+```{r run Seurat integration by condition, warning=FALSE}
+# Split by condition and immune status (e.g.)
+patch.list <- SplitObject(object = all.seurat, split.by = "condition2")
+
+# Chose dendrogram markers as integration anchor features
+patch_features <- markers
+
+set.seed(10)  # I don't think this is necessary, but just in case...
+patch.anchors  <- FindIntegrationAnchors(object.list = patch.list, reference = 1,  # Reference is dissociated cells
+                                         verbose=FALSE, anchor.features = patch_features)
+
+# this command creates an 'integrated' data assay
+patch.combined <- IntegrateData(anchorset = patch.anchors, verbose=FALSE) 
+
+# Perform the integration analysis
+DefaultAssay(patch.combined) <- "integrated"
+
+# Calculate UMAP
+pcs <- 30
+patch.combined <- ScaleData(patch.combined, verbose = FALSE)
+patch.combined <- RunPCA(patch.combined, npcs = pcs, verbose = FALSE)
+patch.combined <- RunUMAP(patch.combined, reduction = "pca", dims = 1:pcs, verbose = FALSE)
+
+DimPlot(patch.combined, reduction = "umap", group.by = "platform", label = FALSE, cols=c("black","grey"), shuffle=TRUE) 
+```
+  
+  
+Visualize some subclass and cell type plots.  
+  
+```{r plot UMAP for merged analysis 3, fig.height=5,fig.width=9}
+DimPlot(patch.combined, reduction = "umap", group.by = "celltype", split.by = "platform", label = TRUE, label.size = 1.5) + NoLegend()
+DimPlot(patch.combined, reduction = "umap", group.by = "celltype", split.by = "platform", label = FALSE) + NoLegend()
+DimPlot(patch.combined, reduction = "umap", split.by = "platform", label = FALSE, group.by="subclass", ncol=2) + NoLegend()
+DimPlot(patch.combined, reduction = "umap", split.by = "platform", label = FALSE, group.by="subclass", ncol=2)
+```
+  
+  
+Save a bunch of umaps for figures in a file.  
+  
+```{r plot other umap plots, fig.height=6,fig.width=6.5}
+# Calculate x and y limits
+tmp <- FetchData(patch.combined,vars = c("UMAP_1","UMAP_2"))
+x1  <- min(tmp[,1])
+x2  <- max(tmp[,1])
+y1  <- min(tmp[,2])
+y2  <- max(tmp[,2])
+# Shortcut function
+DimPlot2 <- function(x,...)  DimPlot(x,reduction="umap",shuffle=TRUE,...)+xlim(x1,x2)+ylim(y1,y2)
+
+pdf("all_tx_umap_plots.pdf",onefile = TRUE, height = 6, width = 6.5)
+DimPlot2(patch.combined, group.by = "platform", label = FALSE, cols=c("black","grey"))
+DimPlot2(patch.combined, group.by = "platform", label = FALSE, cols=c("black","grey")) + NoLegend()
+
+pso  <- patch.combined$platform=="patch-seq"
+subcols <- annoPatch$subclass_color[match(sort(unique(metaPatch$subclass_label)),annoPatch$subclass_label)]
+subcols[subcols=="#A64D"] = "#A64D00"
+DimPlot2(patch.combined[,!pso], group.by = "subclass", label = TRUE, label.size = 2, cols=subcols) + NoLegend()
+DimPlot2(patch.combined[,!pso], group.by = "subclass", label = FALSE, cols=subcols) + NoLegend() + ggtitle("Subclass (dissociated)")
+DimPlot2(patch.combined[,pso], group.by = "subclass", label = FALSE, cols=subcols) + NoLegend() + ggtitle("Subclass (patch-seq)")
+
+DimPlot2(patch.combined[,pso], group.by = "condition2", label = FALSE)
+DimPlot2(patch.combined[,pso], group.by = "condition2", label = FALSE) + NoLegend() 
+DimPlot2(patch.combined[,pso], group.by = "source", label = FALSE)
+DimPlot2(patch.combined[,pso], group.by = "source", label = FALSE)  + NoLegend()
+
+## Add more metadata for specific plots
+# NOTE: source_P and celltype_PS are not needed if we only plot relevant cells
+kp_P  <- patch.combined$celltype=="Inh L2-4 PVALB WFDC2"
+source_P <- patch.combined$condition
+source_P[!kp_P] = NA
+patch.combined <- AddMetaData(patch.combined,source_P,"source_P")
+kp_PS <- is.element(patch.combined$subclass,c("PVALB","SST"))
+celltype_PS <- patch.combined$celltype
+celltype_PS[!kp_PS] = NA
+patch.combined <- AddMetaData(patch.combined,celltype_PS,"celltype_PS")
+
+DimPlot2(patch.combined[,pso&kp_P], group.by = "source_P", label = FALSE) + ggtitle("Source (Pvalb only)")
+DimPlot2(patch.combined[,pso&kp_P], group.by = "source_P", label = FALSE) + NoLegend() + ggtitle("Source (Pvalb only)")
+
+typecols <- annoPatch$topLeaf_color[match(sort(unique(patch.combined[,pso&kp_PS]$celltype)),annoPatch$topLeaf_label)]
+typecols[nchar(typecols)<7] <-paste0(typecols[nchar(typecols)<7],"00")
+
+DimPlot2(patch.combined[,pso&kp_PS], group.by = "celltype_PS", label = TRUE, label.size = 2, cols=typecols) + NoLegend() + ggtitle("Cell type (Pvalb+Sst)")
+DimPlot2(patch.combined[,pso&kp_PS], group.by = "celltype_PS", label = FALSE, cols=typecols) + NoLegend() + ggtitle("Cell type (Pvalb+Sst)")
+
+subtype <- patch.combined$subclass
+subtype[subtype=="SST"] = "SST other"
+subtype[patch.combined$celltype=="Inh L2-4 SST FRZB"] <- "SST FRZB"
+tmp <- AddMetaData(patch.combined,subtype,"subtype")
+cls <- c("#A64D00", "green", "#CC1FCC") # "#1F1FCC"
+DimPlot2(tmp[,pso&kp_PS], group.by = "subtype", label = TRUE, label.size = 2, cols=cls) + NoLegend() + ggtitle("Types (Pvalb+Sst)")
+DimPlot2(tmp[,pso&kp_PS], group.by = "subtype", label = FALSE, cols=cls) + NoLegend() + ggtitle("Types (Pvalb+Sst)")
+
+dev.off()
+```
+  
+There is generally good integration between patch-seq and FACS overall, with the exception of ~10% of cells that seem to cluster separately and likely represent low quality transcriptomics data.  
+  
+  
+How do things look post-integration?  
+  
+```{r plot UMAP for merged analysis 5, fig.height=6,fig.width=8}
+patch.combined_noDis <- patch.combined[,patch.combined$condition2!="dissociated"]
+DimPlot(patch.combined_noDis, reduction = "umap", split.by = "condition2", label = FALSE, group.by="subclass", ncol=2)
+
+pdf("post_integration_UMAP_split.pdf",height=6,width=8)
+DimPlot(patch.combined_noDis, reduction = "umap", split.by = "condition2", label = FALSE, group.by="subclass", ncol=2)
+dev.off()
+```
+  
+## Perform mapping a different way
+  
+One question that came up is how robust is the choice of cell-typing method to cell type selection.  We used a tree-mapping approach to assign cell types (calculated prior to running this script). As a sanity check, we compare cell type assignments from that approach with cell types assigned through a simple correlation-based mapping approach.  
+  
+```{r correlation mapping}
+props     <- get_cl_prop(datMTG_all,clMTG)
+betaScore <- sort(getBetaScore(props[setdiff(names(keepGenes)[keepGenes],is_immune),kpClusts], returnScore = FALSE))
+top.genes <- names(betaScore)[1:250]
+
+cors       <- corTreeMapping(datPatch[top.genes,],medians[top.genes,])
+cor_clusts <- getTopMatch(cors[,kpClusts])
+
+pred_celltypes <- cor_clusts[colnames(datPatch),"TopLeaf"]
+mean(pred_celltypes==metaPatch$topLeaf_label)
+pred_subs <- metaPatch$subclass_label[match(pred_celltypes,metaPatch$topLeaf_label)]
+pred_subs[is.na(pred_subs)] = "PVALB"
+mean(pred_subs==metaPatch$subclass_label)
+table(pred_subs,metaPatch$subclass_label)
+ctmp <- c("Inh L2-4 PVALB WFDC2","Inh L2-4 SST FRZB")
+table(pred_celltypes,metaPatch$topLeaf_label)[ctmp,ctmp]
+
+for (tmp in c("LAMP5/PAX6/Other", "PVALB", "SST", "VIP")){
+  kp <- (pred_subs==tmp)&(metaPatch$subclass_label==tmp)
+  print(paste(tmp,"-",signif(mean(pred_celltypes[kp]==metaPatch$topLeaf_label[kp]),3)))
+}
+```
+  
+Plot the confusion between types.
+  
+```{r confusion, fig.height=4.2,fig.width=5}
+compare_plot <- function (cl, ref.cl) 
+{
+    names(cl) <- names(ref.cl) <- paste0("i",1:length(cl))
+    common.cells <- intersect(names(cl), names(ref.cl))
+    tb <- table(cl[common.cells], ref.cl[common.cells])
+    tb.df <- as.data.frame(tb)
+    tb.df <- tb.df[tb.df$Freq > 0, ]
+    select.cells <- names(cl)
+    tb.df$jaccard <- 0
+    for (i in 1:nrow(tb.df)) {
+        n_ol <- length(union(common.cells[cl[common.cells] == 
+            as.character(tb.df[i, 1])], common.cells[ref.cl[common.cells] == 
+            as.character(tb.df[i, 2])]))
+        tb.df$jaccard[i] <- tb.df$Freq[i]/n_ol
+    }
+    colnames(tb.df) <- c("cl", "ref.cl", "Freq", 
+        "jaccard")
+    g <- ggplot2::ggplot(tb.df, ggplot2::aes(x = cl, y = ref.cl)) + 
+        ggplot2::geom_point(aes(size = sqrt(Freq), color = jaccard)) + 
+        ggplot2::theme(axis.text.x = ggplot2::element_text(vjust = 0.1, 
+            hjust = 0.2, angle = 90, size = 7), axis.text.y = ggplot2::element_text(size = 6)) + 
+        ggplot2::scale_color_gradient(low = "yellow", high = "darkblue") + 
+        ggplot2::scale_size(range = c(0, 3))
+    g
+}
+
+compare_plot(factor(pred_celltypes,levels=kpClusts),
+                               factor(metaPatch$topLeaf_label,levels=kpClusts)) + 
+                                 xlab("Correlation") + 
+                                 ylab("Tree mapping")
+```
+  
+Overall, there is ~40% mismatch on cluster calls and <10% mismatch on subclass calls, with most of the subclass mismatches due to differences in assignment between PVALB WFDC2 and SST FRZB.  Since these two types are so similar, this is not surprising.  The additional cluster mismatches largely within PVALB cell types.
+  
+  
+## Abundance comparison
+  
+Another question that came up is whether there is a change in abundance of cells of given types selected in the culture system, which may represent a bias in either sampling or in the DLX promoter to identify cells of particular types.  First less assess what proportion of cells come from each subclass in each condition.  We'll need to recalculate these values for FACS since we subsampled.  
+  
+```{r define starting data for proportion check}
+prop_metadata <- cbind(patch.combined$condition2,patch.combined$subclass,patch.combined$celltype)
+colnames(prop_metadata) <- c("condition2","subclass","celltype")
+prop_metadata <- prop_metadata[prop_metadata[,"condition2"]!="dissociated",]
+prop_metadata <- as.data.frame(prop_metadata)
+
+annoTmp <- cbind("dissociated",prop_metadata$subclass[match(annoMTG_all$cluster_label,prop_metadata$celltype)],
+                 annoMTG_all$cluster_label)
+annoTmp <- annoTmp[!is.na(annoTmp[,2]),]
+colnames(annoTmp) <- colnames(prop_metadata)
+prop_metadata <- rbind(prop_metadata,annoTmp)
+```
+  
+  
+For the cell types included in this study, how do the subclass proportions compare?  
+  
+```{r proportions by subclass, fig.height=4,fig.width=10}
+countsSubclass <- table(prop_metadata$condition2,prop_metadata$subclass)
+fracsSubclass  <- t(countsSubclass/rowSums(countsSubclass) )
+barplot(fracsSubclass[c(2,3,4,1),], legend=TRUE,xlim=c(0,8), col=subcols, ylab="Fraction of GABAergic cells")
+
+par(mar=c(2,20,2,2))
+countsSubclass <- table(gsub("_immune","",prop_metadata$condition2),prop_metadata$subclass)
+fracsSubclass  <- t(countsSubclass/rowSums(countsSubclass) )
+barplot(fracsSubclass[c(2,3,4,1),], legend=TRUE,xlim=c(0,6), col=subcols, ylab="Fraction of GABAergic cells")
+
+pdf("subclass_acuteVsCultureVsDissociated_barplot.pdf", height=4, width=10)
+par(mar=c(2,20,2,2))
+barplot(fracsSubclass[c(2,3,4,1),], legend=TRUE,xlim=c(0,6), col=subcols, ylab="Fraction of GABAergic cells")
+dev.off()
+```
+  
+There are a few things to note here. First, there is no obvious difference in subclasses that display or don't display the immune signature.  Second, the acute preparation has a lower fraction of SST cells than in Hodge et al 2019. This is known and was one of the primary drivers to pursuing a culture prep in the first place.  Finally, the culture prep has more SST cells and many fewer CGE cells.  This is likely due to a combination of purposeful bias of cell selection of patch-seq operators, as well as any potential biases in the DLX promoter.  
+  
+How does this look at the cell type level?
+  
+```{r proportions by cell type, fig.height=10,fig.width=12}
+par(mfrow=c(2,2))
+for (s in unique(prop_metadata$subclass)){
+  kp <- prop_metadata$subclass==s
+  countsCelltype <- table(gsub("_immune","",prop_metadata$condition2[kp]),prop_metadata$celltype[kp])
+  fracsCelltype  <- t(countsCelltype/rowSums(countsCelltype) )
+  barplot(fracsCelltype, legend=TRUE,xlim=c(0,6.5),col=WGCNA::standardColors(), ylab=paste("Fraction of",s,"cells"))
+}
+pdf("celltype_acuteVsCultureVsDissociated_barplot.pdf", height=10, width=12)
+par(mfrow=c(2,2))
+for (s in unique(prop_metadata$subclass)){
+  kp <- prop_metadata$subclass==s
+  countsCelltype <- table(gsub("_immune","",prop_metadata$condition2[kp]),prop_metadata$celltype[kp])
+  fracsCelltype  <- t(countsCelltype/rowSums(countsCelltype) )
+  barplot(fracsCelltype, legend=TRUE,xlim=c(0,6.5),col=WGCNA::standardColors(), ylab=paste("Fraction of",s,"cells"))
+}
+dev.off()
+```
+  
+Based on the fraction of cells of each subclass selected for patch-seq in the acute and culture conditions, there does not appear to be any major biases in either the DLX promoter or the selection criteria for the patch-seq operators. I think it is reasonable to assume that patch-seq operators are unlikely to be able to choose cells of specific t-type within a subclass by sight, so in this case most bias, if any, likely derives from promoter biases.  There are a few types that may be under-represented in patch-seq in general (L1 SST NMBR, L4-5 PVALB SULF1, L1-3 VIP CHRM2, L4-5 SST B3GAT2), but these are largely located outside the layers of focus of this study.  There are a few minor differences in abundances between acute and culture that are noteworthy: L1-3 PAX6 SYT6, L2-5 PVALB SCUBE3 (chandelier cells) and L2-4 SST FRZB cells are enriched in culture over acute, with L2-4 SST FRZB showing a large enrichment in bose cases over FACS.  Finally, it's worth noting the FACS data isn't truly unbiased either since we selected cells by layer.  
+  
+  
+## Plotting without data integration
+  
+One question came up about whether we are using the optimal strategy for data integration.  To address this we show that a few results hold without data integration. First, let's plot a UMAP of our results based on marker genes without data integration.  
+
+```{r no data integration, warning=FALSE, fig.height=5,fig.width=6.5}
+all.marker <- all.seurat[markers,all.seurat$condition2!="dissociated"]
+VariableFeatures(all.marker) <- markers
+pcs <- 30
+all.marker <- ScaleData(all.marker, verbose = FALSE)
+all.marker <- RunPCA(all.marker, npcs = pcs, verbose = FALSE)
+all.marker <- RunUMAP(all.marker, reduction = "pca", dims = 1:pcs, verbose = FALSE)
+
+all.marker$subclass2 <- all.marker$subclass
+all.marker$subclass2[all.marker$celltype=="Inh L2-4 SST FRZB"] = "SST FRZB"
+
+DimPlot(all.marker, reduction = "umap", group.by = "subclass2", label = TRUE, shuffle=TRUE) 
+DimPlot(all.marker, reduction = "umap", group.by = "condition2", label = FALSE, shuffle=TRUE) 
+
+pdf("subclass_no_integration_using_markers.pdf",height=6,width=8)
+DimPlot(all.marker, reduction = "umap", group.by = "subclass", label = FALSE, shuffle=TRUE, 
+        cols = c("#DB7193","#B12324","#FAA51A","#7D277D"), pt.size = 2) 
+dev.off()
+```
+  
+Overall there is reasonable separation by subclass.  Next let's see where SST FRZB clusters separately by condition2 when considering only each condition2 separately and only looking at SST or PVALB cells.
+  
+```{r no data integration FRZB, warning=FALSE, fig.height=6,fig.width=12}
+p   <- list()
+pcs <- 30
+for (d in unique(all.seurat$condition2)){
+  kp <- (all.seurat$condition2==d)&is.element(all.seurat$subclass,c("SST","PVALB"))
+  all.marker <- all.seurat[setdiff(names(keepGenes)[keepGenes],is_immune),kp]
+  all.marker <- FindVariableFeatures(all.marker, verbose = FALSE) 
+  all.marker <- ScaleData(all.marker, verbose = FALSE)
+  all.marker <- RunPCA(all.marker, npcs = pcs, verbose = FALSE)
+  all.marker <- RunUMAP(all.marker, reduction = "pca", dims = 1:pcs, verbose = FALSE)
+  all.marker$subclass2 <- all.marker$subclass
+  all.marker$subclass2[all.marker$celltype=="Inh L2-4 SST FRZB"] = "SST FRZB"
+
+  p[[d]] <- DimPlot(all.marker, reduction = "umap", group.by = "subclass2", label = TRUE, shuffle=TRUE, pt.size=2) + ggtitle(d)
+}
+gridExtra::grid.arrange(p[[1]],p[[2]],p[[3]],p[[4]],p[[5]],ncol=3)
+pdf("no_data_integration_MGE.pdf",height = 6, width=12)
+gridExtra::grid.arrange(p[[1]],p[[2]],p[[3]],p[[4]],p[[5]],ncol=3)
+dev.off() # Close the file
+```  
+  
+  
+  
+## Compare genes and mapping confidences in acute/culture and immune/not
+  
+First, let's look at mapping confidence between the two groups (culture non-immune, vs culture immune) - is it the same?
+  
+```{r mapping confidence comparison,fig.height=5, fig.width=9}
+metaPatch$seurat_prediction_score_label <- annoPatch$seurat_prediction_score_label
+metaPatch$contam_sum_label <- annoPatch$contam_sum_label
+cols <- c("res_index","topLeafValue","marker_sum_norm_label","quality_score_label", "contam_sum_label",
+          "percent_reads_aligned_to_exons","Tree_first_cor",
+          "Genes.Detected","MALAT1_cpm","seurat_prediction_score_label")
+par(mfrow=c(1,2))
+for (col in cols){
+  kpc <- grepl("culture",patch$condition2)&(!is.na(metaPatch[,col]))
+  kpa <- (!grepl("culture",patch$condition2))&(!is.na(metaPatch[,col]))
+  verboseBoxplot(metaPatch[,col][kpc],patch$condition2[kpc], notch=FALSE, xlab="", ylab=col,addScatterplot = TRUE)
+  verboseBoxplot(metaPatch[,col][kpa],patch$condition2[kpa], notch=FALSE, xlab="", ylab=col,addScatterplot = TRUE)
+}
+
+table(metaPatch$Tree_call,patch$condition2)
+table(annoPatch$contaminationType_label,patch$condition2)
+```
+  
+There is a significant difference in every metric between the immune and non-immune cases; however, the metrics related to resolution index are the most similar, suggesting a minimal effect in mapping.  It's worth noting that different runs of the code have different resolution indexes, but the results are generally consistent.  
+  
+Now let's look at the topLeaf score, only for cells mapping to a leaf node.  
+  
+```{r mapping confidence comparison 2,fig.height=5, fig.width=9}
+col = "topLeafValue"
+kp  = metaPatch$res_index==1
+par(mfrow=c(1,2))
+kpc <- grepl("culture",patch$condition2)&(!is.na(metaPatch[,col]))&kp
+kpa <- (!grepl("culture",patch$condition2))&(!is.na(metaPatch[,col]))&kp
+verboseBoxplot(metaPatch[,col][kpc],patch$condition2[kpc], notch=FALSE, xlab="", ylab=col,addScatterplot = TRUE)
+verboseBoxplot(metaPatch[,col][kpa],patch$condition2[kpa], notch=FALSE, xlab="", ylab=col,addScatterplot = TRUE)
+```
+  
+There is slightly lower mapping confidence in the immune signature cells even for cells mapping to a leaf node (with the caveat that by definition all values are >0.7, and all values are quite good).  
+  
+Plot markers by subclass in acute, culture, immune, and non-immune.  Recall that the marker genes were extracted above.  
+  
+```{r find markers, fig.height=5, fig.width=9}
+par(mfrow=c(1,2))
+kpc <- grepl("culture",patch$condition2)
+kpa <- (!grepl("culture",patch$condition2))
+verboseBarplot(colSums(datPatch[markers,kpc]>0),patch$condition2[kpc], xlab="", ylab="Markers expressed",addScatterplot = TRUE,ylim=c(0,800))
+verboseBarplot(colSums(datPatch[markers,kpa]>0),patch$condition2[kpa], xlab="", ylab="Markers expressed",addScatterplot = TRUE,ylim=c(0,800))
+```
+The number of marker genes detected is approximately the same in immune vs. non-immune suggesting the increase in genes is a different gene set.  For each subclass, let's see how well the genes are correlated when considering marker genes.  We'll also plot the immune signature genes for comparison, but these genes will not go into the correlation calculations.    
+  
+```{r gene comparison, fig.height=10, fig.width=10}
+dat <- as.matrix(datPatch[markers,])
+dat_immune <- as.matrix(datPatch[is_immune,])
+subclass   <- metaPatch$subclass_label
+pc  <- patch$condition2
+par(mfrow=c(2,2))
+for (s in sort(unique(subclass))){
+  datI <- apply(dat[,(pc=="culture_immune")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  datN <- apply(dat[,(pc=="culture")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  verboseScatterplot(datN,datI,xlab="Trim mean, culture, NO immune",ylab="Trim mean, culture, YES immune",
+                     main=s,pch=19,cex=0.5,xlim=c(0,14),ylim=c(0,14))
+  abline(0,1,col="grey")
+  
+  datIi <- apply(dat_immune[,(pc=="culture_immune")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  datNi <- apply(dat_immune[,(pc=="culture")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  points(datNi,datIi,pch=19,cex=0.5,col="red")
+}
+
+set.seed(42)
+pci  <- sample(pc,length(pc))
+par(mfrow=c(2,2))
+for (s in sort(unique(subclass))){
+  datI <- apply(dat[,(pci=="culture_immune")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  datN <- apply(dat[,(pci=="culture")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  verboseScatterplot(datN,datI,xlab="Trim mean, random set 1",ylab="Trim mean, random set 2",
+                     main=s,pch=19,cex=0.5,xlim=c(0,14),ylim=c(0,14))
+  abline(0,1,col="grey")
+  
+  datIi <- apply(dat_immune[,(pci=="culture_immune")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  datNi <- apply(dat_immune[,(pci=="culture")&(subclass==s)],1,function(x) mean(x,trim=0.25))
+  points(datNi,datIi,pch=19,cex=0.5,col="red")
+}
+```
+  
+  
+## Compare immune status by donor
+  
+In this section we want to see whether any donor or cell properties relate to the immune signature.  
+  
+```{r immune properties,fig.height=7, fig.width=10}
+annoPatch$patch_year = substr(annoPatch$patch_date_label,1,4)
+annoPatch$Region     = metaPatch$structure
+annoPatch$Donor      = metaPatch$Donor
+cols <- c("L23_cell_depth_label", "total_cortical_depth_label", "Depth_from_Pia_microns_label", "patch_date_id", 
+          "go_no_go_63x_id", "endPipetteR_label", "Retraction_time_label", "Ephys_time_label", "Total_time_label", 
+          "Region", "cell_depth_label", "sliceHealth_label", "rigNumber_color", "Donor","patch_year",
+          "postPatch_classification_label", "postPatch_label", "medical_conditions_label", "gender_label")
+par(mfrow=c(2,2))
+for (col in cols){
+  x <- annoPatch[,col]
+  kp<- !is.na(x)
+  y <- patch$condition2[kp]
+  x <- x[kp]
+  if(is.numeric(x)){
+    verboseBoxplot(x,y, notch=FALSE, xlab="", ylab=col,addScatterplot = TRUE, cex.axis=0.75)
+  } else {
+    print(col)
+    print(table(x,y))
+  }
+}
+```
+  
+There are no super obvious differences between the immune and non-immune cells, although there are some subtle hints.  For example, this effect might be more prevalent in male than female individuals, and not all donors have an equal split of yes/no calls.  
+
+  
+# Double bouquet cell DEX
+  
+In a separate analysis we found that DBCs fall in two clusters with equal frequency to non-DBCs in those same clusters.  The question we want to ask now is, given the cell morphology, can we find any DEX genes between DBCs and non-DBCs that are mapped to either Inh L1-3 SST CALB1 or Inh L3-5 SST ADGRG6.  Since we are only looking at patch-seq data, we don't need to restrict the analysis to "keepGenes" defined above.  
+  
+```{r DBC analysis}
+dbc_info <- read.csv("dbc_calb1_ADGRG6.csv")
+dbc_dat  <- datPatch[,dbc_info$Tube_id]
+dbc_dat  <- dbc_dat[rowSums(dbc_dat>3)>=6,]  # Request expression>3 in at least 5/28 total cells in analysis
+dbc      <- dbc_info$DBC=="yes"
+
+wilcox_plus <- function(xy,split){
+  x <- xy[split]
+  y <- xy[!split]
+  w <- suppressWarnings(wilcox.test(x, y))
+  signif(c(mean(x),sd(x),sum(x>0),mean(y),sd(y),sum(y>0),mean(x)-mean(y),w$statistic,w$p.value),3)
+}
+dbc_stats <- t(apply(dbc_dat,1,wilcox_plus,dbc))
+dbc_stats <- data.frame(cbind(dbc_stats,p.adjust(dbc_stats[,9],method = "fdr",n=length(dbc_stats[,9]))))
+colnames(dbc_stats) <- c("mean_dbc","sd_dbc","count_dbc","mean_nondbc","sd_nondbc","count_nondbc",
+                         "logfc","wilcox_stat","wilcox_pval","wilcox_FDR")
+
+head(dbc_stats[order(dbc_stats[,7]),],20)
+head(dbc_stats[order(-dbc_stats[,7]),],20)
+write.csv(dbc_stats[order(dbc_stats[,7]),],"DBC_DE_statistics.csv")
+```
+
+There are no significant differentially expressed genes.  We'll use some web tools (e.g., ToppGene) to see if we can learn anything else.  
+  
+Let's try another strategy of collecting all cells in these two cell types and see if we can use random forest to predict the other cells.  We are likely extremely underpowered for that, but it's worth a try...  
+  
+```{r DBC prediction}
+all_immune <- sort(union(rownames(culture_immune), rownames(acute_immune)))
+kpDBC  <- is.element(metaPatch$topLeaf_label,c("Inh L1-3 SST CALB1","Inh L3-5 SST ADGRG6"))
+datDBC <- datPatch[setdiff(names(keepGenes),all_immune),kpDBC]
+morph  <- metaPatch$morpho_call[kpDBC]
+morph[morph==""] = "Unknown"
+morph[is.element(morph,c("MC","Basket","Sparse SST"))] = "Not DBC"
+
+dbcGenes <- VariableFeatures(FindVariableFeatures(CreateSeuratObject(datDBC),verbose=FALSE,nfeatures = 2500))
+datExpr <- cbind(data.frame(morph=morph),t(datDBC[dbcGenes,]))
+datExpr$morph <- droplevels(as.factor(datExpr$morph))
+genes   <- setNames(colnames(datExpr),make.names(colnames(datExpr)))
+colnames(datExpr) <- names(genes)
+
+runs        <- 10
+importance  <- list()
+predictions <- matrix(NA,nrow = dim(datExpr)[1],ncol=runs)
+rownames(predictions) <- rownames(datExpr)
+
+for (seed in 1:runs){
+  set.seed(seed)
+  sample <- subsampleCells(datExpr$morph, 3, seed=seed)
+  sample[is.element(morph,c("Unknown","Basket"))] = 0
+   
+  train  <- subset(datExpr, sample == 1)
+  train$morph <- droplevels(train$morph)
+  test   <- subset(datExpr, sample != 1)
+  rf     <- randomForest(morph ~ ., data=train, importance=TRUE)
+  pred   <- predict(rf, newdata=test[-1])  # the first column is donor name
+  importance[[seed]] <- rf$importance
+  rownames(importance[[seed]]) <- as.character(genes[rownames(importance[[seed]])])
+  predictions[names(pred),seed] = as.character(pred)
+}
+pred  <- apply(predictions,1,function(x) names(sort(-table(x)))[1])
+score <- apply(predictions,1,function(x) max(table(x))/sum(table(x)))
+table(morph,pred)
+meanImportance <- pmean.fromList(importance)
+```
+These results aren't terrible, and seem generally believable (with the exception that we are assuming the basket cell is an anomaly).  Now let's run a DEX analysis of predicted DBCs vs. non-DBCs.  
+  
+```{r predicted DBC dex genes}
+dbc_stats2 <- t(apply(datDBC[setdiff(keepGenes,all_immune),],1,wilcox_plus,(pred=="DBC")))
+dbc_stats2 <- data.frame(cbind(dbc_stats2,p.adjust(dbc_stats2[,9],method = "fdr",n=length(dbc_stats2[,9]))))
+colnames(dbc_stats2) <- c("mean_dbc","sd_dbc","count_dbc","mean_nondbc","sd_nondbc","count_nondbc",
+                         "logfc","wilcox_stat","wilcox_pval","wilcox_FDR")
+
+head(dbc_stats2[order(dbc_stats2[,7]),],20)
+head(dbc_stats2[order(-dbc_stats2[,7]),],20)
+write.csv(dbc_stats2[order(dbc_stats2[,7]),],"DBC_DE_statistics2.csv")
+
+rownames(metaPatch) <- colnames(datPatch)
+table(pred,metaPatch[names(pred),"condition2"])
+table(morph,metaPatch[names(pred),"condition2"])
+```
+
+We cannot use genes to accurately predict DBC vs. non-DBC because 4/11 DBCs are immune, while 7/9 MCs+SMCs are immune, and the prediction algorithm almost entirely divides by this source of variation, even after attempting to account for it.  
+  
+  
+### Comparison of morphology, electrophysiology, and transcriptomics of L1-3 SST CALB1 cells
+  
+We cannot find many genes differentially expressed between morpho types, and the ones that we do find reflect differences in the count of cells with immune signatures.  What if we restrict the space to cells in the immune culture group.  
+  
+```{r morpho of immune culture cells, fig.height=4, fig.width=6, warning=FALSE}
+kpMCI  <- is.element(metaPatch$topLeaf_label,c("Inh L1-3 SST CALB1"))#,"Inh L3-5 SST ADGRG6"))
+kpMCI  <- kpMCI&(metaPatch$condition2=="culture_immune")&!(is.element(metaPatch$morpho_call,c("","Unknown")))
+offMCI <- rownames(datPatch)[rowMedians(datPatch[,kpMCI])<1]
+kpGnMCI<- setdiff(names(keepGenes)[keepGenes],c(all_immune,offMCI))
+datMCI <- datPatch[kpGnMCI,kpMCI]  # Exclude immune genes again, as well as genes not expressed in half the cells
+
+metadataMCI <- data.frame(morpho = metaPatch$morpho_call[kpMCI])
+rownames(metadataMCI) <- colnames(datMCI)
+mci <- CreateSeuratObject(counts = datMCI, meta.data = metadataMCI)
+mci <- FindVariableFeatures(mci,nfeatures = 250, verbose = FALSE) 
+mci <- ScaleData(mci, verbose = FALSE)
+mci <- RunPCA(mci, npcs = 5, verbose = FALSE)
+mci2 <- RunUMAP(mci, reduction = "pca", dims = 1:5, verbose = FALSE, n.neighbors = 3)
+
+DimPlot(mci2, reduction = "umap", group.by = "morpho",pt.size=4)
+```
+  
+No separation by morphology using variable genes.  What about by DEX genes?  
+  
+```{r morpho of immune culture cells dex, fig.height=4, fig.width=15, warning=FALSE}
+Idents(mci2) <- mci2$morpho
+markersMCI  <- FindAllMarkers(mci2, verbose = FALSE, logfc.threshold = 0,test.use = "t", min.diff.pct = 0)
+print(dim(markersMCI))
+
+kpMCI  <- is.element(metaPatch$topLeaf_label,c("Inh L1-3 SST CALB1"))#,"Inh L3-5 SST ADGRG6"))
+datMCI <- datPatch[,kpMCI]  # Exclude immune genes again, as well as genes not expressed in half the cells
+
+metadataMCI <- data.frame(morpho = metaPatch$morpho_call[kpMCI],
+                          condition2 = metaPatch$condition2[kpMCI],
+                          celltype   = metaPatch$topLeaf_label[kpMCI])
+metadataMCI$morpho[is.element(metadataMCI$morpho,c(""))]="Unknown"
+rownames(metadataMCI) <- colnames(datMCI)
+mci <- CreateSeuratObject(counts = datMCI, meta.data = metadataMCI)
+VariableFeatures(mci) <- rownames(markersMCI)
+mci <- ScaleData(mci, verbose = FALSE, features = VariableFeatures(mci))
+pcs <- 6
+mci <- RunPCA(mci, npcs = pcs, verbose = FALSE)
+mci <- RunUMAP(mci, reduction = "pca", dims = 1:pcs, verbose = FALSE, n.neighbors = 5)
+
+mci <- FindNeighbors(mci, verbose = FALSE, dims=1:2, reduction="umap")
+mci <- FindClusters(mci, verbose = FALSE, resolution=1)
+
+a = range(FetchData(mci,c("UMAP_1","UMAP_2")))
+p1=DimPlot(mci, reduction = "umap", group.by = "morpho",pt.size=4) + xlim(a) + ylim(a)
+p2=DimPlot(mci, reduction = "umap", group.by = "condition2",pt.size=4) + xlim(a) + ylim(a)
+p3=DimPlot(mci, reduction = "umap",pt.size=4) + xlim(a) + ylim(a)
+print(p1+p2+p3)
+
+pdf("cells_divided_by_morphology.pdf",height=4,width=15)
+print(p1+p2+p3)
+dev.off()
+```
+There definitely appears to be a separation of cells by type when looking at the data this way, although this is somewhat circular.  If we add the cells from ADGRG6, the results are still consistent and we have more data, which might be better.   
+  
+Output the results to a file.  
+  
+```{r output predictions}
+morphoPred <- cbind(metadataMCI,Idents(mci),metaPatch$spec_id[kpMCI])
+table(morphoPred$morpho,morphoPred[,4])
+write.csv(morphoPred,"cell_morphology_predictions.csv")
+```
+  
+Find genes differentially expressed between the three confirmed cell type groups.  
+  
+```{r differentially expressed genes}
+FeaturePlot(mci,features = "CALB1",pt.size=5)
+FeaturePlot(mci,features = "PEX5L",pt.size=5)
+FeaturePlot(mci,features = "CASC15",pt.size=5)
+
+mci3 <- mci[keepGenes,]
+morphos <- as.numeric(as.character(Idents(mci3)))
+morphos[morphos==0] = "DBC"
+morphos[morphos==1] = "Sparse SST"
+morphos[morphos==2] = "MC"
+Idents(mci3) <- as.factor(morphos)
+updated_markersMCI <- FindAllMarkers(mci3,only.pos=TRUE, verbose=FALSE, logfc.threshold = 1, min.diff.pct=0.2)
+updated_markersMCI <- updated_markersMCI[intersect(rownames(updated_markersMCI),rownames(datMCI)),] # Shouldn't be needed, but is
+
+means <- findFromGroups(t(datMCI[rownames(updated_markersMCI),]),morphos)
+colnames(means) <- paste(colnames(means)," (average)")
+fracs <- findFromGroups(t(datMCI[rownames(updated_markersMCI),]>0),morphos)
+colnames(fracs) <- paste(colnames(fracs),"(frac>0)")
+out <- cbind(updated_markersMCI[c("cluster","p_val","p_val_adj","avg_log2FC")],means,fracs)
+write.csv(out,"morphology_type_differential_genes.csv")
+```
+  
+Read in electophysiology data and compare to morphology and transcriptomics.  
+  
+```{r ephys comparison}
+# Read in data
+ephys  <- read.csv("acute.culture.locked_sstcalb1.ephys.csv")
+info   <- read.csv("cell_morphology_predictions_CALB1.csv")
+info   <- cbind(info,ephys[,c("Donor","structure","slice","Block","condition")])
+info   <- info[match(ephys[,"spec_id"],info[,"cell.specimen.id"]),]
+ephys  <- as.matrix(ephys[,12:104])
+rownames(info) <- rownames(ephys) <- rownames(metadataMCI)
+ephys  <- ephys[,colSums(is.na(ephys))<25] 
+
+# Find gene/ephys correlations
+isVar  <- (rowSds(datMCI)>=1)&(rowMeans(datMCI>0)>=0.25)#&keepGenes
+corVar <- cor(ephys,t(datMCI[isVar,]),use="p")
+topVar <- which(abs(corVar)>=0.5,arr.ind = TRUE)
+topVar <- apply(topVar,1,function(x) c(rownames(corVar)[x[1]],colnames(corVar)[x[2]],corVar[x[1],x[2]]))
+topVar <- as.data.frame(t(topVar))
+rownames(topVar) <- NULL
+colnames(topVar) <- c("Feature","Gene","Correlation")
+topVar[order(as.numeric(topVar$Correlation)),]
+write.csv(topVar,"top_ephys_gene_relationships_CALB1.csv",row.names=FALSE)
+
+# Plot ephys vs. morpho relationships
+pdf("ephys_box_plots.pdf",height=5,width=5)
+for(i in 1:dim(ephys)[2]){
+  x <- ephys[,i]
+  verboseBoxplot(x[!is.na(x)],info$predicted.morpho[!is.na(x)],addScatterplot = TRUE, notch=FALSE, 
+                 pt.cex=(info$morpho[!is.na(x)]!="Unknown")+0.5, pt.col = labels2colors(info$morpho)[!is.na(x)], 
+                 pch=19,xlab="",ylab=colnames(ephys)[i])
+}
+dev.off()
+```
+  
+Looking at the output plots by eye, I'm fairly confident that the predicted morphologies are NOT ACCURATE.  In particular, the Sparse SST morphologies are very often outlier values from the other predicted Sparse SST calls, suggesting these predictions based on gene expression are wrong.  What if we do the converse analysis, starting from ephys properties and seeing if there is any evidence of genes matching these new labels?  
+  
+  
+### Defining clusters based on ephys
+  
+```{r ephys clusters, fig.height=4, fig.width=15, warning=FALSE}
+# Plot some ephys variables
+vf <- c("upstroke_downstroke_ratio_ramp", "peak_deltav_ramp", "upstroke_downstroke_ratio_rheo", "upstroke_rheo", "upstroke_hero", "downstroke_short_square", "sag_tau", "tau", "sag_peak_t")
+e <- rbind(c(vf[1],vf[8]), c(vf[3],vf[7]), c(vf[1],vf[9]), c(vf[4],vf[9]))
+par(mfrow=c(1,4))
+for (i in 1:4){
+  cols <- gsub("yellow","black",labels2colors(info$morpho))
+  plot(ephys[,e[i,1]],ephys[,e[i,2]],col=cols,pch=19,xlab=e[i,1],ylab=e[i,2],cex=2)
+}
+# Perfect separation based on upstroke_rheo and sag_peak_t
+new_prediction <- mci$morpho
+new_prediction[ephys[,"sag_peak_t"]<=100]   = "DBC"
+new_prediction[ephys[,"upstroke_rheo"]>350] = "MC"
+new_prediction[ephys[,"sag_peak_t"]>0.053]  = "Sparse SST"
+
+#varGn <- intersect(names(keepGenes)[keepGenes],topVar$Gene[is.element(topVar$Feature,vf)]) # rownames(markersMCI)
+
+mci4 <- mci
+mci4 <- AddMetaData(mci4,new_prediction,"predict_morpho")
+Idents(mci4) <- mci4$predict_morpho
+kp   <- (Idents(mci4)!="Unknown")&(mci4$condition2=="culture_immune")
+markersMCI4  <- FindAllMarkers(mci4[keepGenes,kp], logfc.threshold = 1,test.use = "t", 
+                               min.diff.pct = 0.1, only.pos = TRUE, verbose = FALSE)
+print(dim(markersMCI4))
+
+
+pcs  <- 4
+
+VariableFeatures(mci4) <- rownames(markersMCI4)
+mci4 <- ScaleData(mci4, verbose = FALSE)
+mci4 <- RunPCA(mci4, npcs = pcs, verbose = FALSE)
+mci4 <- RunUMAP(mci4, reduction = "pca", dims = 1:pcs, verbose = FALSE, n.neighbors = 5)
+mci4 <- FindNeighbors(mci4, verbose = FALSE, dims=1:2, reduction="umap")
+mci4 <- FindClusters(mci4, verbose = FALSE, resolution=1)
+
+a = range(FetchData(mci4,c("UMAP_1","UMAP_2")))
+sz = (mci4$morpho!="Unknown")*2+1
+p1=ggplot_build(DimPlot(mci4, reduction = "umap", group.by = "morpho",pt.size=sz) + xlim(a) + ylim(a))
+p2=ggplot_build(DimPlot(mci4, reduction = "umap", group.by = "condition2",pt.size=3) + xlim(a) + ylim(a))
+p3=ggplot_build(DimPlot(mci4, reduction = "umap", group.by = "predict_morpho",pt.size=3) + xlim(a) + ylim(a))
+print(p1$plot+p2$plot+p3$plot)
+```
+  
+Repeat random forest predictions using ephys AND gene expression properties and see how well they agree.  
+  
+```{r DBC prediction 2}
+morph <- metadataMCI$morpho
+morph[is.element(morph,c("MC","Basket","Sparse SST"))] = "Not DBC"
+
+kp = setdiff(names(keepGenes)[(rownames(datMCI)==make.names(rownames(datMCI)))],all_immune)
+dbcGenes <- VariableFeatures(FindVariableFeatures(CreateSeuratObject(datMCI[kp,]),verbose=FALSE,nfeatures = 2500))
+datExpr  <- cbind(data.frame(morph=morph),t(datMCI[dbcGenes,]))
+datExpr$morph <- droplevels(as.factor(datExpr$morph))
+
+runs         <- 25
+predictionsG <- predictionsE <- matrix(NA,nrow = dim(datExpr)[1],ncol=runs)
+rownames(predictionsE) <- rownames(predictionsG) <- rownames(datExpr)
+ephysDF <- apply(ephys,2,function(x) {x[is.na(x)]=mean(x,na.rm=TRUE); return(x);})
+ephysDF <- as.data.frame(ephysDF)[,colSums(is.na(ephys))<25]
+ephysDF$morph <- droplevels(as.factor(morph))
+ephysDF <- ephysDF[,c("morph",setdiff(colnames(ephysDF),"morph"))]
+
+for (seed in 1:runs){
+  set.seed(seed)
+  sample <- subsampleCells(datExpr$morph, 3, seed=seed)
+  sample[is.element(morph,c("Unknown","Basket"))] = 0
+  
+  # Using genes
+  train  <- subset(datExpr, sample == 1)
+  train$morph <- droplevels(train$morph)
+  test   <- subset(datExpr, sample != 1)
+  rf     <- randomForest(morph ~ ., data=train, importance=TRUE)
+  pred   <- predict(rf, newdata=test[-1])  # the first column is morpho call
+  predictionsG[names(pred),seed] = as.character(pred)
+  
+  # Using ephys
+  train  <- subset(ephysDF, sample == 1)
+  train$morph <- droplevels(train$morph)
+  test   <- subset(ephysDF, sample != 1)
+  rf     <- randomForest(morph ~ ., data=train, importance=TRUE)
+  pred   <- predict(rf, newdata=test[-1])  # the first column is morpho call
+  predictionsE[names(pred),seed] = as.character(pred)
+}
+predE  <- apply(predictionsE,1,function(x) names(sort(-table(x)))[1])
+scoreE <- apply(predictionsE,1,function(x) max(table(x))/sum(table(x)))
+predG  <- apply(predictionsG,1,function(x) names(sort(-table(x)))[1])
+scoreG <- apply(predictionsG,1,function(x) max(table(x))/sum(table(x)))
+table(morph,predE)
+table(morph,predG)
+table(predG[morph=="Unknown"],predE[morph=="Unknown"])
+
+table(new_prediction[morph=="Unknown"],info$predicted.morpho[morph=="Unknown"])
+
+write.csv(cbind(morphoPred,new_prediction),"cell_morphology_predictions2.csv")
+```  
+  
+Output session information.  
+   
+```{r sessionInfo}
+sessionInfo()
+```
+  
+  
