@@ -1,5 +1,5 @@
 # human_patchseq_gaba
-Code for reproducing the analyses presented in [Signature morpho-electric properties of diverse GABAergic interneurons in the human neocortex]((https://www.science.org/doi/full/10.1126/science.adf6484).  It includes the following files:
+Code for reproducing the analyses presented in [Signature morpho-electric properties of diverse GABAergic interneurons in the human neocortex](https://www.science.org/doi/full/10.1126/science.adf6484).  It includes the following files:
 
 * **complete_patchseq_data_sets[1/2].Rdata** - These are R objects that (together) have **all of the gene expression data** and relevant cell metadata used for analysis.  *These files must be merged before use, as described in "scripts_gene_expression".*
 * **vgic_genes.csv** - This is a manually curated table of voltage-gated ion channels. 
